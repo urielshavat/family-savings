@@ -2,31 +2,305 @@
 <html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>מחשבון חיסכון משפחתי</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
-      body {
-        font-family: 'Heebo', sans-serif;
-      }
+      body { font-family: 'Heebo', sans-serif; }
+      /* Custom scrollbar */
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: #f8fafc; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
-    "recharts": "https://esm.sh/recharts@^3.7.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "react": "https://esm.sh/react@^19.2.4",
-    "uuid": "https://esm.sh/uuid@^13.0.0"
-  }
-}
-</script>
-</head>
-  <body class="bg-gray-50 text-gray-900">
+
+    <!-- Babel Standalone for JSX/TS transpilation in browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Import Map -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.3.1",
+        "react-dom": "https://esm.sh/react-dom@18.3.1",
+        "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.460.0?deps=react@18.3.1",
+        "recharts": "https://esm.sh/recharts@2.13.0?deps=react@18.3.1,react-dom@18.3.1"
+      }
+    }
+    </script>
+  </head>
+  <body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
-    <script type="module" src="/index.tsx"></script>
+
+    <script type="text/babel" data-presets="react,typescript" data-type="module">
+      import React, { useState, useCallback, useRef, useMemo } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { 
+        Settings, Percent, Calendar, DollarSign, Activity, Plus, 
+        Trash2, CalendarCheck, Coins, Calculator, Download, 
+        Upload, ArrowDownCircle, Info, ChevronRight, TrendingUp
+      } from 'lucide-react';
+      import { 
+        AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
+        ResponsiveContainer, ReferenceLine 
+      } from 'recharts';
+
+      // --- UTILS ---
+      const addMonths = (date: Date, months: number): Date => {
+        const d = new Date(date);
+        d.setMonth(d.getMonth() + months);
+        return d;
+      };
+
+      const formatDate = (date: Date): string => {
+        return new Intl.DateTimeFormat('he-IL', { month: 'short', year: 'numeric' }).format(date);
+      };
+
+      const getMonthlyRate = (annualRate: number) => Math.pow(1 + annualRate / 100, 1 / 12) - 1;
+
+      const generateId = () => crypto.randomUUID?.() || Math.random().toString(36).substring(2, 11);
+
+      // --- CALCULATION LOGIC ---
+      const runSimulationPeriod = (
+        startBalance: number,
+        startCostBasis: number,
+        startNominalCostBasis: number,
+        startDate: Date,
+        startMonthIndex: number,
+        durationMonths: number,
+        monthlyDeposit: number,
+        params: any,
+        eventsInPeriod: Map<number, any[]>
+      ) => {
+        let balance = startBalance;
+        let costBasis = startCostBasis;
+        let nominalCostBasis = startNominalCostBasis;
+        const schedule = [];
+        let failed = false;
+
+        const monthlyReturnRate = getMonthlyRate(params.annualReturn);
+        const monthlyInflationRate = getMonthlyRate(params.annualInflation);
+        const taxRate = params.capitalGainsTax / 100;
+
+        for (let i = 0; i < durationMonths; i++) {
+          const currentMonthIndex = startMonthIndex + i;
+          const currentDate = addMonths(startDate, i);
+          const balanceStart = balance;
+
+          balance += monthlyDeposit;
+          costBasis += monthlyDeposit;
+          nominalCostBasis += monthlyDeposit;
+
+          balance *= (1 + monthlyReturnRate);
+          costBasis *= (1 + monthlyInflationRate);
+
+          const monthEvents = eventsInPeriod.get(currentMonthIndex);
+          let mGross = 0, mNet = 0, mTax = 0, mRealGain = 0, mNominalGain = 0, mPreBal = 0;
+          let eventRef = undefined;
+
+          if (monthEvents) {
+            mPreBal = balance;
+            for (const event of monthEvents) {
+              eventRef = event;
+              const inflationFactor = Math.pow(1 + monthlyInflationRate, currentMonthIndex);
+              const targetNetNominal = event.targetAmount * inflationFactor;
+
+              const realProfitRatio = balance > 0 ? Math.max(0, 1 - (costBasis / balance)) : 0;
+              const effectiveTaxRate = realProfitRatio * taxRate;
+              const grossNeeded = targetNetNominal / (1 - effectiveTaxRate);
+
+              if (balance < grossNeeded) failed = true;
+
+              const tax = grossNeeded - targetNetNominal;
+              balance -= grossNeeded;
+              
+              const withdrawalRatio = (balance + grossNeeded > 0) ? (grossNeeded / (balance + grossNeeded)) : 1;
+              costBasis *= (1 - withdrawalRatio);
+              nominalCostBasis *= (1 - withdrawalRatio);
+
+              mGross += grossNeeded; mNet += targetNetNominal; mTax += tax;
+            }
+          }
+
+          schedule.push({
+            monthIndex: currentMonthIndex,
+            date: formatDate(currentDate),
+            deposit: monthlyDeposit,
+            balanceStart,
+            balanceEnd: balance,
+            eventOccurred: eventRef,
+            withdrawalGross: mGross > 0 ? mGross : undefined,
+            withdrawalNet: mNet > 0 ? mNet : undefined,
+            taxPaid: mTax > 0 ? mTax : undefined,
+            preWithdrawalBalance: mGross > 0 ? mPreBal : undefined
+          });
+
+          if (balance < -1) failed = true;
+        }
+
+        return { schedule, finalBalance: balance, finalCostBasis: costBasis, finalNominalCostBasis: nominalCostBasis, failed };
+      };
+
+      const solveRequiredDeposit = (bal, cb, ncb, start, startIdx, events, params) => {
+        if (events.length === 0) return 0;
+        let low = 0, high = 2000000, result = high;
+        for (let i = 0; i < 20; i++) {
+          const mid = (low + high) / 2;
+          const lastIdx = Math.max(...events.map(e => e.monthOffset));
+          const evMap = new Map();
+          events.forEach(e => { if(!evMap.has(e.monthOffset)) evMap.set(e.monthOffset, []); evMap.get(e.monthOffset).push(e); });
+          const sim = runSimulationPeriod(bal, cb, ncb, start, startIdx, lastIdx - startIdx + 1, mid, params, evMap);
+          if (sim.failed) low = mid; else { result = mid; high = mid; }
+        }
+        return Math.ceil(result / 10) * 10;
+      };
+
+      const calculateSavingsPlan = (params, events) => {
+        const sorted = [...events].sort((a,b) => a.monthOffset - b.monthOffset);
+        if (sorted.length === 0) return { success: true, schedule: [], finalBalance: params.initialCapital, totalDeposited: 0, totalTaxPaid: 0, totalWithdrawnNet: 0 };
+
+        const fullSchedule = [];
+        let curBal = params.initialCapital, curCB = params.initialCapital, curNCB = params.initialCapital;
+        let curMonth = 0, maxDep = Infinity;
+        const evMonths = Array.from(new Set(sorted.map(e => e.monthOffset))).sort((a,b) => a-b);
+
+        for (const mIdx of evMonths) {
+          const rem = sorted.filter(e => e.monthOffset >= curMonth);
+          const req = solveRequiredDeposit(curBal, curCB, curNCB, addMonths(new Date(params.startDate), curMonth), curMonth, rem, params);
+          let dep = Math.min(req, maxDep);
+          maxDep = dep;
+
+          const mEvents = new Map(); mEvents.set(mIdx, sorted.filter(e => e.monthOffset === mIdx));
+          const sim = runSimulationPeriod(curBal, curCB, curNCB, addMonths(new Date(params.startDate), curMonth), curMonth, mIdx - curMonth + 1, dep, params, mEvents);
+          
+          fullSchedule.push(...sim.schedule);
+          curBal = sim.finalBalance; curCB = sim.finalCostBasis; curNCB = sim.finalNominalCostBasis;
+          curMonth = mIdx + 1;
+        }
+
+        return {
+          success: !fullSchedule.some(s => s.balanceEnd < -1),
+          schedule: fullSchedule,
+          finalBalance: curBal,
+          totalDeposited: fullSchedule.reduce((a, s) => a + s.deposit, 0),
+          totalTaxPaid: fullSchedule.reduce((a, s) => a + (s.taxPaid || 0), 0),
+          totalWithdrawnNet: fullSchedule.reduce((a, s) => a + (s.withdrawalNet || 0), 0)
+        };
+      };
+
+      // --- MAIN APP ---
+      const App = () => {
+        const [params, setParams] = useState({ startDate: new Date().toISOString().split('T')[0], annualReturn: 7, annualInflation: 2, capitalGainsTax: 25, initialCapital: 0 });
+        const [events, setEvents] = useState([]);
+        const [simulation, setSimulation] = useState(null);
+        const fileRef = useRef(null);
+
+        const handleCalculate = () => setSimulation(calculateSavingsPlan(params, events));
+        const handleAdd = () => setEvents([...events, { id: generateId(), name: 'אירוע חדש', targetAmount: 10000, monthOffset: (events.length ? Math.max(...events.map(e => e.monthOffset)) : 0) + 12 }]);
+        const handleUpd = (id, f, v) => setEvents(events.map(e => e.id === id ? {...e, [f]: v} : e));
+        const handleDel = (id) => setEvents(events.filter(e => e.id !== id));
+        
+        const formatC = (v) => new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(v);
+
+        const dOpts = useMemo(() => {
+          const start = new Date(params.startDate);
+          return Array.from({ length: 481 }, (_, i) => {
+            const d = addMonths(start, i);
+            const y = Math.floor(i/12), m = i%12;
+            const diff = i===0 ? "החודש" : `${y>0?y+" ש'":""} ${m>0?m+" ח'":""}`.trim();
+            return { v: i, l: `${d.getMonth()+1}/${d.getFullYear()} (${diff})` };
+          });
+        }, [params.startDate]);
+
+        return (
+          <div className="min-h-screen bg-slate-50 p-4 md:p-8 text-slate-800" dir="rtl">
+            <div className="max-w-6xl mx-auto space-y-6">
+              <header className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <div className="flex items-center gap-4">
+                  <div className="bg-emerald-500 p-3 rounded-xl text-white shadow-lg"><Calculator size={32} /></div>
+                  <div><h1 className="text-2xl font-bold">מחשבון חיסכון משפחתי</h1><p className="text-slate-500 text-sm">תכנון פיננסי חכם לאירועים עתידיים</p></div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => { const b=new Blob([JSON.stringify({params, events})], {type:'application/json'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='plan.json'; a.click(); }} className="bg-slate-100 px-4 py-2 rounded-lg text-sm font-bold flex gap-2"><Download size={18}/> ייצוא</button>
+                  <button onClick={() => fileRef.current.click()} className="bg-slate-100 px-4 py-2 rounded-lg text-sm font-bold flex gap-2"><Upload size={18}/> טעינה</button>
+                  <input type="file" ref={fileRef} className="hidden" onChange={(e) => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=(ev)=>{ const d=JSON.parse(ev.target.result); setParams(d.params); setEvents(d.events); setSimulation(null); }; r.readAsText(f); }} />
+                </div>
+              </header>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="space-y-6">
+                  <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                    <h2 className="text-lg font-bold flex gap-2 text-emerald-600"><Settings size={20}/> הגדרות</h2>
+                    <div className="space-y-3">
+                      <label className="block text-xs font-bold text-slate-400">תאריך התחלה</label>
+                      <input type="date" value={params.startDate} onChange={e => setParams({...params, startDate: e.target.value})} className="w-full bg-slate-50 border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500" />
+                      <div className="grid grid-cols-2 gap-3">
+                        <div><label className="text-[10px] font-bold text-slate-400">תשואה (%)</label><input type="number" value={params.annualReturn} onChange={e => setParams({...params, annualReturn: +e.target.value})} className="w-full bg-slate-50 border-slate-200 rounded-xl p-3" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400">אינפלציה (%)</label><input type="number" value={params.annualInflation} onChange={e => setParams({...params, annualInflation: +e.target.value})} className="w-full bg-slate-50 border-slate-200 rounded-xl p-3" /></div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div><label className="text-[10px] font-bold text-slate-400">מס (%)</label><input type="number" value={params.capitalGainsTax} onChange={e => setParams({...params, capitalGainsTax: +e.target.value})} className="w-full bg-slate-50 border-slate-200 rounded-xl p-3" /></div>
+                        <div><label className="text-[10px] font-bold text-slate-400">הון (₪)</label><input type="number" value={params.initialCapital} onChange={e => setParams({...params, initialCapital: +e.target.value})} className="w-full bg-slate-50 border-slate-200 rounded-xl p-3" /></div>
+                      </div>
+                    </div>
+                  </section>
+                  <button onClick={handleCalculate} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-2xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2"><TrendingUp size={24}/> חשב תוכנית</button>
+                </div>
+
+                <div className="lg:col-span-2">
+                  <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-full">
+                    <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-lg font-bold flex gap-2 text-blue-600"><CalendarCheck size={20}/> אירועים</h2>
+                      <button onClick={handleAdd} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-sm font-bold flex gap-2"><Plus size={18}/> הוסף</button>
+                    </div>
+                    <div className="space-y-3 max-h-[500px] overflow-y-auto pl-2">
+                      {events.map(e => (
+                        <div key={e.id} className="relative bg-slate-50 border border-slate-100 rounded-xl p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                          <button onClick={() => handleDel(e.id)} className="absolute top-1 left-1 text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
+                          <div className="md:col-span-4"><label className="text-[10px] font-bold text-slate-400">שם</label><input type="text" value={e.name} onChange={x => handleUpd(e.id, 'name', x.target.value)} className="w-full bg-transparent border-none p-0 font-bold" /></div>
+                          <div className="md:col-span-4"><label className="text-[10px] font-bold text-slate-400">יעד</label><select value={e.monthOffset} onChange={x => handleUpd(e.id, 'monthOffset', +x.target.value)} className="w-full bg-transparent border-none p-0 text-sm">{dOpts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}</select></div>
+                          <div className="md:col-span-4"><label className="text-[10px] font-bold text-slate-400">סכום נטו</label><input type="number" value={e.targetAmount} onChange={x => handleUpd(e.id, 'targetAmount', +x.target.value)} className="w-full bg-transparent border-none p-0 font-bold" /></div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+              </div>
+
+              {simulation && (
+                <div className="space-y-6 pb-12">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200"><p className="text-xs font-bold text-slate-400 uppercase">הפקדה חודשית</p><p className="text-3xl font-black text-emerald-600">{formatC(simulation.schedule[0]?.deposit || 0)}</p></div>
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200"><p className="text-xs font-bold text-slate-400 uppercase">יתרה סופית</p><p className="text-3xl font-black text-blue-600">{formatC(simulation.finalBalance)}</p></div>
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200"><p className="text-xs font-bold text-slate-400 uppercase">סה"כ מס</p><p className="text-3xl font-black text-rose-500">{formatC(simulation.totalTaxPaid)}</p></div>
+                  </div>
+                  <section className="bg-white p-6 rounded-2xl border border-slate-200 h-[400px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={simulation.schedule}>
+                        <defs><linearGradient id="gBal" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient></defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="date" interval={Math.floor(simulation.schedule.length/6)} tick={{fontSize: 10}} />
+                        <YAxis tickFormatter={v => formatC(v).replace('₪','')} tick={{fontSize: 10}} />
+                        <Tooltip formatter={v => formatC(v)} />
+                        <Area type="monotone" dataKey="balanceEnd" name="יתרה" stroke="#10b981" fill="url(#gBal)" strokeWidth={3} />
+                        <Area type="stepAfter" dataKey="deposit" name="הפקדה" stroke="#3b82f6" fill="transparent" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </section>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      };
+
+      createRoot(document.getElementById('root')).render(<App />);
+    </script>
   </body>
 </html>

@@ -3,24 +3,59 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>מחשבון חיסכון משפחתי</title>
+    <title>מחשבון חיסכון משפחתי | תכנון פיננסי חכם</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
     <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
     <style>
-      body { font-family: 'Heebo', sans-serif; }
+      body { 
+        font-family: 'Heebo', sans-serif; 
+        background-color: #f8fafc;
+        color: #1e293b;
+      }
+      .glass {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+      }
+      .card-shadow {
+        box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
+      }
+      .btn-primary {
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px -10px rgba(16, 185, 129, 0.5);
+      }
+      input, select {
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      input:focus, select:focus {
+        border-color: #10b981;
+        box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+      }
+      @keyframes slideIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-slide-in {
+        animation: slideIn 0.3s ease-out forwards;
+      }
       /* Custom scrollbar */
       ::-webkit-scrollbar { width: 6px; }
-      ::-webkit-scrollbar-track { background: #f8fafc; }
+      ::-webkit-scrollbar-track { background: #f1f5f9; }
       ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
       ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 
-    <!-- Babel Standalone for JSX/TS transpilation in browser -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Fixed Babel Standalone Version -->
+    <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 
     <!-- Import Map -->
     <script type="importmap">
@@ -35,52 +70,58 @@
     }
     </script>
   </head>
-  <body class="bg-slate-50 text-slate-900">
+  <body class="overflow-x-hidden">
     <div id="root"></div>
 
-    <script type="text/babel" data-presets="react,typescript" data-type="module">
+    <script type="text/babel" data-type="module" data-presets="react,typescript">
       import React, { useState, useCallback, useRef, useMemo } from 'react';
       import { createRoot } from 'react-dom/client';
       import { 
         Settings, Percent, Calendar, DollarSign, Activity, Plus, 
-        Trash2, CalendarCheck, Coins, Calculator, Download, 
-        Upload, ArrowDownCircle, Info, ChevronRight, TrendingUp
+        Trash2, CalendarCheck, Calculator, Download, 
+        Upload, TrendingUp, Wallet, Sparkles, PieChart, Info, AlertCircle, ChevronDown, Clock
       } from 'lucide-react';
       import { 
         AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
-        ResponsiveContainer, ReferenceLine 
+        ResponsiveContainer, ReferenceLine
       } from 'recharts';
 
       // --- UTILS ---
-      const addMonths = (date: Date, months: number): Date => {
+      const addMonths = (date, months) => {
         const d = new Date(date);
         d.setMonth(d.getMonth() + months);
         return d;
       };
 
-      const formatDate = (date: Date): string => {
+      const formatDate = (date) => {
         return new Intl.DateTimeFormat('he-IL', { month: 'short', year: 'numeric' }).format(date);
       };
 
-      const getMonthlyRate = (annualRate: number) => Math.pow(1 + annualRate / 100, 1 / 12) - 1;
+      const getMonthlyRate = (annualRate) => Math.pow(1 + annualRate / 100, 1 / 12) - 1;
 
       const generateId = () => crypto.randomUUID?.() || Math.random().toString(36).substring(2, 11);
 
-      // --- CALCULATION LOGIC ---
+      const formatCurrency = (v) => new Intl.NumberFormat('he-IL', { 
+        style: 'currency', 
+        currency: 'ILS', 
+        maximumFractionDigits: 0 
+      }).format(v);
+
+      // --- SIMULATION ENGINE ---
       const runSimulationPeriod = (
-        startBalance: number,
-        startCostBasis: number,
-        startNominalCostBasis: number,
-        startDate: Date,
-        startMonthIndex: number,
-        durationMonths: number,
-        monthlyDeposit: number,
-        params: any,
-        eventsInPeriod: Map<number, any[]>
+        startBalance,
+        startCostBasis, 
+        startNominalBasis,
+        startDate,
+        startMonthIndex,
+        durationMonths,
+        monthlyDeposit,
+        params,
+        eventsInPeriod
       ) => {
         let balance = startBalance;
-        let costBasis = startCostBasis;
-        let nominalCostBasis = startNominalCostBasis;
+        let costBasis = startCostBasis; // Indexed cost basis (for real gains tax)
+        let nominalBasis = startNominalBasis; // Unindexed cost basis
         const schedule = [];
         let failed = false;
 
@@ -95,13 +136,13 @@
 
           balance += monthlyDeposit;
           costBasis += monthlyDeposit;
-          nominalCostBasis += monthlyDeposit;
+          nominalBasis += monthlyDeposit;
 
           balance *= (1 + monthlyReturnRate);
           costBasis *= (1 + monthlyInflationRate);
 
           const monthEvents = eventsInPeriod.get(currentMonthIndex);
-          let mGross = 0, mNet = 0, mTax = 0, mRealGain = 0, mNominalGain = 0, mPreBal = 0;
+          let mGross = 0, mNet = 0, mTax = 0, mPreBal = 0, mRealProfit = 0, mNominalProfit = 0;
           let eventRef = undefined;
 
           if (monthEvents) {
@@ -111,20 +152,29 @@
               const inflationFactor = Math.pow(1 + monthlyInflationRate, currentMonthIndex);
               const targetNetNominal = event.targetAmount * inflationFactor;
 
-              const realProfitRatio = balance > 0 ? Math.max(0, 1 - (costBasis / balance)) : 0;
+              const realProfitRatio = balance > 0 ? Math.max(0, (balance - costBasis) / balance) : 0;
+              const nominalProfitRatio = balance > 0 ? Math.max(0, (balance - nominalBasis) / balance) : 0;
               const effectiveTaxRate = realProfitRatio * taxRate;
+              
               const grossNeeded = targetNetNominal / (1 - effectiveTaxRate);
 
               if (balance < grossNeeded) failed = true;
 
-              const tax = grossNeeded - targetNetNominal;
+              const tax = Math.max(0, grossNeeded - targetNetNominal);
+              const realProfitInWithdrawal = grossNeeded * realProfitRatio;
+              const nominalProfitInWithdrawal = grossNeeded * nominalProfitRatio;
+
               balance -= grossNeeded;
               
               const withdrawalRatio = (balance + grossNeeded > 0) ? (grossNeeded / (balance + grossNeeded)) : 1;
               costBasis *= (1 - withdrawalRatio);
-              nominalCostBasis *= (1 - withdrawalRatio);
+              nominalBasis *= (1 - withdrawalRatio);
 
-              mGross += grossNeeded; mNet += targetNetNominal; mTax += tax;
+              mGross += grossNeeded; 
+              mNet += targetNetNominal; 
+              mTax += tax;
+              mRealProfit += realProfitInWithdrawal;
+              mNominalProfit += nominalProfitInWithdrawal;
             }
           }
 
@@ -138,24 +188,37 @@
             withdrawalGross: mGross > 0 ? mGross : undefined,
             withdrawalNet: mNet > 0 ? mNet : undefined,
             taxPaid: mTax > 0 ? mTax : undefined,
-            preWithdrawalBalance: mGross > 0 ? mPreBal : undefined
+            realProfit: mGross > 0 ? mRealProfit : undefined,
+            nominalProfit: mGross > 0 ? mNominalProfit : undefined,
+            preWithdrawalBalance: mGross > 0 ? mPreBal : undefined,
+            durationInPeriod: i + 1
           });
 
           if (balance < -1) failed = true;
         }
 
-        return { schedule, finalBalance: balance, finalCostBasis: costBasis, finalNominalCostBasis: nominalCostBasis, failed };
+        return { 
+          schedule, 
+          finalBalance: balance, 
+          finalCostBasis: costBasis, 
+          finalNominalBasis: nominalBasis, 
+          failed 
+        };
       };
 
       const solveRequiredDeposit = (bal, cb, ncb, start, startIdx, events, params) => {
         if (events.length === 0) return 0;
-        let low = 0, high = 2000000, result = high;
-        for (let i = 0; i < 20; i++) {
+        let low = 0, high = 20000000, result = high;
+        const maxIdx = Math.max(...events.map(e => e.monthOffset));
+        const evMap = new Map();
+        events.forEach(e => {
+          if(!evMap.has(e.monthOffset)) evMap.set(e.monthOffset, []);
+          evMap.get(e.monthOffset).push(e);
+        });
+
+        for (let i = 0; i < 25; i++) {
           const mid = (low + high) / 2;
-          const lastIdx = Math.max(...events.map(e => e.monthOffset));
-          const evMap = new Map();
-          events.forEach(e => { if(!evMap.has(e.monthOffset)) evMap.set(e.monthOffset, []); evMap.get(e.monthOffset).push(e); });
-          const sim = runSimulationPeriod(bal, cb, ncb, start, startIdx, lastIdx - startIdx + 1, mid, params, evMap);
+          const sim = runSimulationPeriod(bal, cb, ncb, start, startIdx, maxIdx - startIdx + 1, mid, params, evMap);
           if (sim.failed) low = mid; else { result = mid; high = mid; }
         }
         return Math.ceil(result / 10) * 10;
@@ -163,24 +226,31 @@
 
       const calculateSavingsPlan = (params, events) => {
         const sorted = [...events].sort((a,b) => a.monthOffset - b.monthOffset);
-        if (sorted.length === 0) return { success: true, schedule: [], finalBalance: params.initialCapital, totalDeposited: 0, totalTaxPaid: 0, totalWithdrawnNet: 0 };
+        if (sorted.length === 0) {
+          return { success: true, schedule: [], finalBalance: params.initialCapital, totalDeposited: 0, totalTaxPaid: 0, totalWithdrawnNet: 0 };
+        }
 
         const fullSchedule = [];
         let curBal = params.initialCapital, curCB = params.initialCapital, curNCB = params.initialCapital;
-        let curMonth = 0, maxDep = Infinity;
-        const evMonths = Array.from(new Set(sorted.map(e => e.monthOffset))).sort((a,b) => a-b);
+        let curMonth = 0;
+        let maxDepConstraint = Infinity; 
+        
+        const eventMonths = Array.from(new Set(sorted.map(e => e.monthOffset))).sort((a,b) => a-b);
 
-        for (const mIdx of evMonths) {
+        for (const mIdx of eventMonths) {
           const rem = sorted.filter(e => e.monthOffset >= curMonth);
-          const req = solveRequiredDeposit(curBal, curCB, curNCB, addMonths(new Date(params.startDate), curMonth), curMonth, rem, params);
-          let dep = Math.min(req, maxDep);
-          maxDep = dep;
+          const requiredForFuture = solveRequiredDeposit(curBal, curCB, curNCB, addMonths(new Date(params.startDate), curMonth), curMonth, rem, params);
+          
+          let deposit = Math.min(requiredForFuture, maxDepConstraint);
+          maxDepConstraint = deposit;
 
-          const mEvents = new Map(); mEvents.set(mIdx, sorted.filter(e => e.monthOffset === mIdx));
-          const sim = runSimulationPeriod(curBal, curCB, curNCB, addMonths(new Date(params.startDate), curMonth), curMonth, mIdx - curMonth + 1, dep, params, mEvents);
+          const segmentEvents = new Map(); 
+          segmentEvents.set(mIdx, sorted.filter(e => e.monthOffset === mIdx));
+          
+          const sim = runSimulationPeriod(curBal, curCB, curNCB, addMonths(new Date(params.startDate), curMonth), curMonth, mIdx - curMonth + 1, deposit, params, segmentEvents);
           
           fullSchedule.push(...sim.schedule);
-          curBal = sim.finalBalance; curCB = sim.finalCostBasis; curNCB = sim.finalNominalCostBasis;
+          curBal = sim.finalBalance; curCB = sim.finalCostBasis; curNCB = sim.finalNominalBasis;
           curMonth = mIdx + 1;
         }
 
@@ -194,113 +264,335 @@
         };
       };
 
-      // --- MAIN APP ---
       const App = () => {
-        const [params, setParams] = useState({ startDate: new Date().toISOString().split('T')[0], annualReturn: 7, annualInflation: 2, capitalGainsTax: 25, initialCapital: 0 });
+        const [params, setParams] = useState({ 
+          startDate: new Date().toISOString().split('T')[0], 
+          annualReturn: 7, 
+          annualInflation: 2, 
+          capitalGainsTax: 25, 
+          initialCapital: 0 
+        });
         const [events, setEvents] = useState([]);
         const [simulation, setSimulation] = useState(null);
+        const [isCalculating, setIsCalculating] = useState(false);
         const fileRef = useRef(null);
 
-        const handleCalculate = () => setSimulation(calculateSavingsPlan(params, events));
-        const handleAdd = () => setEvents([...events, { id: generateId(), name: 'אירוע חדש', targetAmount: 10000, monthOffset: (events.length ? Math.max(...events.map(e => e.monthOffset)) : 0) + 12 }]);
+        const handleCalculate = () => {
+          setIsCalculating(true);
+          setTimeout(() => {
+            setSimulation(calculateSavingsPlan(params, events));
+            setIsCalculating(false);
+          }, 400);
+        };
+
+        const handleAdd = () => {
+          const lastOffset = events.length ? Math.max(...events.map(e => e.monthOffset)) : 0;
+          setEvents([...events, { 
+            id: generateId(), 
+            name: `אירוע ${events.length + 1}`, 
+            targetAmount: 10000, 
+            monthOffset: lastOffset + 12 
+          }]);
+        };
+
         const handleUpd = (id, f, v) => setEvents(events.map(e => e.id === id ? {...e, [f]: v} : e));
         const handleDel = (id) => setEvents(events.filter(e => e.id !== id));
         
-        const formatC = (v) => new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(v);
-
-        const dOpts = useMemo(() => {
+        const dateOptions = useMemo(() => {
           const start = new Date(params.startDate);
           return Array.from({ length: 481 }, (_, i) => {
             const d = addMonths(start, i);
             const y = Math.floor(i/12), m = i%12;
-            const diff = i===0 ? "החודש" : `${y>0?y+" ש'":""} ${m>0?m+" ח'":""}`.trim();
-            return { v: i, l: `${d.getMonth()+1}/${d.getFullYear()} (${diff})` };
+            const diff = i === 0 ? "החודש" : `${y > 0 ? y + ' ש\'' : ''} ${m > 0 ? m + ' ח\'' : ''}`.trim();
+            return { v: i, l: `${d.getMonth() + 1}/${d.getFullYear()} (${diff})` };
           });
         }, [params.startDate]);
 
         return (
-          <div className="min-h-screen bg-slate-50 p-4 md:p-8 text-slate-800" dir="rtl">
-            <div className="max-w-6xl mx-auto space-y-6">
-              <header className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                <div className="flex items-center gap-4">
-                  <div className="bg-emerald-500 p-3 rounded-xl text-white shadow-lg"><Calculator size={32} /></div>
-                  <div><h1 className="text-2xl font-bold">מחשבון חיסכון משפחתי</h1><p className="text-slate-500 text-sm">תכנון פיננסי חכם לאירועים עתידיים</p></div>
+          <div className="min-h-screen pb-20">
+            <header className="bg-white/80 glass sticky top-0 z-50 border-b border-slate-200">
+              <div className="max-w-7xl mx-auto px-6 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-emerald-600 p-2.5 rounded-2xl text-white shadow-lg shadow-emerald-200">
+                    <Calculator size={24} strokeWidth={2.5} />
+                  </div>
+                  <div>
+                    <h1 className="text-xl font-black text-slate-800 tracking-tight leading-tight">מחשבון חיסכון משפחתי</h1>
+                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">Smart Wealth Planning</p>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => { const b=new Blob([JSON.stringify({params, events})], {type:'application/json'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='plan.json'; a.click(); }} className="bg-slate-100 px-4 py-2 rounded-lg text-sm font-bold flex gap-2"><Download size={18}/> ייצוא</button>
-                  <button onClick={() => fileRef.current.click()} className="bg-slate-100 px-4 py-2 rounded-lg text-sm font-bold flex gap-2"><Upload size={18}/> טעינה</button>
-                  <input type="file" ref={fileRef} className="hidden" onChange={(e) => { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=(ev)=>{ const d=JSON.parse(ev.target.result); setParams(d.params); setEvents(d.events); setSimulation(null); }; r.readAsText(f); }} />
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { 
+                    const data = { params, events };
+                    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a'); a.href = url; a.download = 'family-savings.json'; a.click();
+                  }} className="text-xs font-bold text-slate-600 px-4 py-2 rounded-xl hover:bg-slate-100 transition flex items-center gap-2">
+                    <Download size={14} /> ייצוא תוכנית
+                  </button>
+                  <button onClick={() => fileRef.current.click()} className="text-xs font-bold text-slate-600 px-4 py-2 rounded-xl hover:bg-slate-100 transition flex items-center gap-2">
+                    <Upload size={14} /> טעינה
+                  </button>
+                  <input type="file" ref={fileRef} className="hidden" onChange={(e) => {
+                    const f = e.target.files[0]; if(!f) return;
+                    const r = new FileReader(); r.onload = (ev) => {
+                      try { const d = JSON.parse(ev.target.result); setParams(d.params); setEvents(d.events); setSimulation(null); } catch(e) { alert('קובץ לא תקין'); }
+                    }; r.readAsText(f);
+                  }} />
                 </div>
-              </header>
+              </div>
+            </header>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="space-y-6">
-                  <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-                    <h2 className="text-lg font-bold flex gap-2 text-emerald-600"><Settings size={20}/> הגדרות</h2>
-                    <div className="space-y-3">
-                      <label className="block text-xs font-bold text-slate-400">תאריך התחלה</label>
-                      <input type="date" value={params.startDate} onChange={e => setParams({...params, startDate: e.target.value})} className="w-full bg-slate-50 border-slate-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-emerald-500" />
-                      <div className="grid grid-cols-2 gap-3">
-                        <div><label className="text-[10px] font-bold text-slate-400">תשואה (%)</label><input type="number" value={params.annualReturn} onChange={e => setParams({...params, annualReturn: +e.target.value})} className="w-full bg-slate-50 border-slate-200 rounded-xl p-3" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400">אינפלציה (%)</label><input type="number" value={params.annualInflation} onChange={e => setParams({...params, annualInflation: +e.target.value})} className="w-full bg-slate-50 border-slate-200 rounded-xl p-3" /></div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div><label className="text-[10px] font-bold text-slate-400">מס (%)</label><input type="number" value={params.capitalGainsTax} onChange={e => setParams({...params, capitalGainsTax: +e.target.value})} className="w-full bg-slate-50 border-slate-200 rounded-xl p-3" /></div>
-                        <div><label className="text-[10px] font-bold text-slate-400">הון (₪)</label><input type="number" value={params.initialCapital} onChange={e => setParams({...params, initialCapital: +e.target.value})} className="w-full bg-slate-50 border-slate-200 rounded-xl p-3" /></div>
-                      </div>
-                    </div>
-                  </section>
-                  <button onClick={handleCalculate} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-2xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2"><TrendingUp size={24}/> חשב תוכנית</button>
+            <main className="max-w-7xl mx-auto px-6 mt-8 space-y-8">
+              {/* Top Settings Section (Moved above events) */}
+              <section className="bg-white rounded-3xl p-7 border border-slate-200 card-shadow">
+                <div className="flex items-center gap-2 mb-6 text-emerald-600">
+                  <Settings size={20} strokeWidth={2.5} />
+                  <h2 className="text-lg font-black text-slate-800">הגדרות החיסכון והשקעה</h2>
                 </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 items-end">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Calendar size={12}/> תאריך התחלה</label>
+                    <input type="date" value={params.startDate} onChange={e => setParams({...params, startDate: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:ring-4 focus:ring-emerald-500/10 transition-all" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><TrendingUp size={12}/> תשואה שנתית (%)</label>
+                    <input type="number" step="0.1" value={params.annualReturn} onChange={e => setParams({...params, annualReturn: +e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Activity size={12}/> אינפלציה (%)</label>
+                    <input type="number" step="0.1" value={params.annualInflation} onChange={e => setParams({...params, annualInflation: +e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Percent size={12}/> מס רווח הון</label>
+                    <input type="number" value={params.capitalGainsTax} onChange={e => setParams({...params, capitalGainsTax: +e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Wallet size={12}/> הון התחלתי</label>
+                    <input type="number" step="1000" value={params.initialCapital} onChange={e => setParams({...params, initialCapital: +e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold" />
+                  </div>
+                </div>
+              </section>
 
-                <div className="lg:col-span-2">
-                  <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-full">
-                    <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-lg font-bold flex gap-2 text-blue-600"><CalendarCheck size={20}/> אירועים</h2>
-                      <button onClick={handleAdd} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-sm font-bold flex gap-2"><Plus size={18}/> הוסף</button>
+              <div className="grid grid-cols-1 gap-8">
+                {/* Events Section */}
+                <section className="bg-white rounded-3xl p-7 border border-slate-200 card-shadow h-full flex flex-col">
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="flex items-center gap-2">
+                      <CalendarCheck size={20} className="text-blue-600" />
+                      <h2 className="text-lg font-black text-slate-800">אירועים ומשיכות מתוכננות</h2>
                     </div>
-                    <div className="space-y-3 max-h-[500px] overflow-y-auto pl-2">
-                      {events.map(e => (
-                        <div key={e.id} className="relative bg-slate-50 border border-slate-100 rounded-xl p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-                          <button onClick={() => handleDel(e.id)} className="absolute top-1 left-1 text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
-                          <div className="md:col-span-4"><label className="text-[10px] font-bold text-slate-400">שם</label><input type="text" value={e.name} onChange={x => handleUpd(e.id, 'name', x.target.value)} className="w-full bg-transparent border-none p-0 font-bold" /></div>
-                          <div className="md:col-span-4"><label className="text-[10px] font-bold text-slate-400">יעד</label><select value={e.monthOffset} onChange={x => handleUpd(e.id, 'monthOffset', +x.target.value)} className="w-full bg-transparent border-none p-0 text-sm">{dOpts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}</select></div>
-                          <div className="md:col-span-4"><label className="text-[10px] font-bold text-slate-400">סכום נטו</label><input type="number" value={e.targetAmount} onChange={x => handleUpd(e.id, 'targetAmount', +x.target.value)} className="w-full bg-transparent border-none p-0 font-bold" /></div>
+                    <div className="flex gap-4 items-center">
+                      <button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl text-xs font-black flex items-center gap-2 transition-all shadow-lg shadow-blue-100 active:scale-95">
+                        <Plus size={18} strokeWidth={3} /> הוסף אירוע
+                      </button>
+                      <button onClick={handleCalculate} disabled={isCalculating} className="btn-primary text-white font-black py-3 px-8 rounded-2xl shadow-xl shadow-emerald-100 flex items-center justify-center gap-3 disabled:opacity-50 active:scale-95">
+                        {isCalculating ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> : <><Sparkles size={20} /> חשב תוכנית</>}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-4 overflow-y-auto max-h-[600px] pr-2">
+                    {events.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center py-20 bg-slate-50/50 rounded-[2rem] border-2 border-dashed border-slate-200">
+                        <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mb-4 text-slate-300 shadow-sm">
+                          <Info size={32} />
                         </div>
-                      ))}
-                    </div>
-                  </section>
-                </div>
+                        <p className="text-slate-400 font-bold max-w-[220px]">הוסיפו אירועים משפחתיים (חתונה, בר מצווה, רכישה גדולה) כדי לתכנן את המשיכות.</p>
+                      </div>
+                    ) : (
+                      events.map((e) => {
+                        const inflation = getMonthlyRate(params.annualInflation);
+                        const adjusted = e.targetAmount * Math.pow(1 + inflation, e.monthOffset);
+                        return (
+                          <div key={e.id} className="animate-slide-in relative bg-slate-50 border border-slate-100 rounded-3xl p-6 hover:border-emerald-200 transition-all group grid grid-cols-1 md:grid-cols-12 gap-6 items-end shadow-sm">
+                            <button onClick={() => handleDel(e.id)} className="absolute top-4 left-4 text-slate-300 hover:text-rose-500 transition opacity-0 group-hover:opacity-100">
+                              <Trash2 size={18}/>
+                            </button>
+                            <div className="md:col-span-4 space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">שם האירוע</label>
+                              <input type="text" value={e.name} onChange={x => handleUpd(e.id, 'name', x.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-sm font-bold" />
+                            </div>
+                            <div className="md:col-span-4 space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">מועד משיכה</label>
+                              <div className="relative">
+                                <select value={e.monthOffset} onChange={x => handleUpd(e.id, 'monthOffset', +x.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-sm font-bold appearance-none">
+                                  {dateOptions.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                                </select>
+                                <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
+                              </div>
+                            </div>
+                            <div className="md:col-span-2 space-y-2">
+                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">סכום נטו (היום)</label>
+                              <input type="number" step="1000" value={e.targetAmount} onChange={x => handleUpd(e.id, 'targetAmount', +x.target.value)} className="w-full bg-white border border-slate-200 rounded-2xl p-3 text-sm font-bold" />
+                            </div>
+                            <div className="md:col-span-2 text-left pb-1">
+                              <p className="text-[10px] font-black text-slate-300 uppercase leading-none mb-1">סכום מתואם מדד</p>
+                              <p className="text-sm font-black text-emerald-600">{formatCurrency(adjusted)}</p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
               </div>
 
               {simulation && (
-                <div className="space-y-6 pb-12">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200"><p className="text-xs font-bold text-slate-400 uppercase">הפקדה חודשית</p><p className="text-3xl font-black text-emerald-600">{formatC(simulation.schedule[0]?.deposit || 0)}</p></div>
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200"><p className="text-xs font-bold text-slate-400 uppercase">יתרה סופית</p><p className="text-3xl font-black text-blue-600">{formatC(simulation.finalBalance)}</p></div>
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200"><p className="text-xs font-bold text-slate-400 uppercase">סה"כ מס</p><p className="text-3xl font-black text-rose-500">{formatC(simulation.totalTaxPaid)}</p></div>
+                <div className="mt-12 space-y-12 animate-in fade-in slide-in-from-bottom-6 duration-700">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div className="md:col-span-2 bg-white rounded-[2.5rem] p-10 border border-slate-200 card-shadow flex flex-col justify-between relative overflow-hidden group">
+                      <Sparkles className="absolute -top-10 -right-10 w-40 h-40 text-emerald-500/5 group-hover:text-emerald-500/10 transition-all duration-1000" />
+                      <div className="flex items-center gap-2 text-emerald-600 mb-6 font-black uppercase tracking-widest text-[11px]">
+                        <TrendingUp size={16} /> הפקדה חודשית מומלצת
+                      </div>
+                      <div>
+                        <h3 className="text-6xl font-black mb-2 text-slate-900">{formatCurrency(simulation.schedule[0]?.deposit || 0)}</h3>
+                        <p className="text-slate-400 text-sm font-bold leading-relaxed max-w-[400px]">
+                          זהו הסכום המרבי שעליכם להפקיד. גובה ההפקדה עשוי <span className="text-emerald-600">לרדת</span> לאחר פקיעת אירועים, אך לעולם לא יעלה.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-[2.5rem] p-10 border border-slate-200 card-shadow flex flex-col justify-center">
+                      <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">יתרה סופית</p>
+                      <h3 className="text-4xl font-black text-blue-600">{formatCurrency(simulation.finalBalance)}</h3>
+                      <div className="mt-6 flex items-center gap-2 text-[10px] text-slate-400 font-bold">
+                        <Activity size={12} /> יתרה לאחר כל המשיכות
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-[2.5rem] p-10 border border-slate-200 card-shadow flex flex-col justify-center">
+                      <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-2">סה"כ הפקדות</p>
+                      <h3 className="text-4xl font-black text-slate-700">{formatCurrency(simulation.totalDeposited)}</h3>
+                      <div className="mt-6 flex items-center gap-2 text-[10px] text-slate-400 font-bold">
+                        <Wallet size={12} /> סה"כ הון עצמי מושקע
+                      </div>
+                    </div>
                   </div>
-                  <section className="bg-white p-6 rounded-2xl border border-slate-200 h-[400px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={simulation.schedule}>
-                        <defs><linearGradient id="gBal" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/><stop offset="95%" stopColor="#10b981" stopOpacity={0}/></linearGradient></defs>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="date" interval={Math.floor(simulation.schedule.length/6)} tick={{fontSize: 10}} />
-                        <YAxis tickFormatter={v => formatC(v).replace('₪','')} tick={{fontSize: 10}} />
-                        <Tooltip formatter={v => formatC(v)} />
-                        <Area type="monotone" dataKey="balanceEnd" name="יתרה" stroke="#10b981" fill="url(#gBal)" strokeWidth={3} />
-                        <Area type="stepAfter" dataKey="deposit" name="הפקדה" stroke="#3b82f6" fill="transparent" strokeWidth={2} />
-                      </AreaChart>
-                    </ResponsiveContainer>
+
+                  <section className="bg-white p-10 rounded-[3rem] border border-slate-200 card-shadow">
+                    <div className="flex items-center justify-between mb-10">
+                      <div>
+                        <h3 className="text-xl font-black text-slate-800">גרף צבירת הון</h3>
+                        <p className="text-slate-400 text-xs font-bold mt-1">צבירה חודשית, הפקדות ונקודות משיכה לאורך השנים</p>
+                      </div>
+                      <div className="flex gap-4">
+                        <div className="flex items-center gap-2 text-[10px] font-black text-slate-500"><div className="w-3 h-3 bg-emerald-500 rounded-full"></div> יתרה</div>
+                        <div className="flex items-center gap-2 text-[10px] font-black text-slate-500"><div className="w-3 h-3 bg-blue-500/20 border-2 border-blue-500 rounded-full"></div> הפקדה</div>
+                      </div>
+                    </div>
+                    <div className="h-[450px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={simulation.schedule} margin={{ top: 20, right: 10, left: 10, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="colorBal" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.15}/>
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="date" interval={Math.floor(simulation.schedule.length/8)} tick={{fontSize: 10, fontWeight: 700, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                          <YAxis tickFormatter={v => formatCurrency(v).replace('₪','')} tick={{fontSize: 10, fontWeight: 700, fill: '#94a3b8'}} axisLine={false} tickLine={false} />
+                          <Tooltip 
+                            contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 40px -10px rgba(0,0,0,0.1)', direction: 'rtl', padding: '16px' }} 
+                            formatter={v => [formatCurrency(v), ""]} 
+                          />
+                          <Area type="monotone" dataKey="balanceEnd" name="יתרה" stroke="#10b981" fill="url(#colorBal)" strokeWidth={4} animationDuration={1500} />
+                          <Area type="stepAfter" dataKey="deposit" name="הפקדה" stroke="#3b82f6" fill="rgba(59, 130, 246, 0.05)" strokeWidth={2} strokeDasharray="5 5" />
+                          {simulation.schedule.filter(s => s.eventOccurred).map((s, i) => (
+                            <ReferenceLine key={i} x={s.date} stroke="#f43f5e" strokeDasharray="8 8" label={{ position: 'top', value: '📍', fill: '#f43f5e', fontSize: 20 }} />
+                          ))}
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </section>
+
+                  <section className="bg-white rounded-[3rem] border border-slate-200 card-shadow overflow-hidden">
+                    <div className="p-10 border-b border-slate-100 flex items-center justify-between">
+                      <h3 className="text-xl font-black text-slate-800">פירוט תקופות ומשיכות</h3>
+                      {!simulation.success && (
+                        <div className="bg-rose-50 text-rose-600 px-4 py-2 rounded-xl flex items-center gap-2 text-xs font-bold animate-pulse">
+                          <AlertCircle size={16} /> החיסכון אינו מספיק לכל המשיכות
+                        </div>
+                      )}
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-right border-collapse">
+                        <thead className="bg-slate-50/50 text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                          <tr>
+                            <th className="p-8">פירוט האירוע / תקופה</th>
+                            <th className="p-8">תאריך / משך</th>
+                            <th className="p-8">משיכת ברוטו</th>
+                            <th className="p-8">רווח נומינלי</th>
+                            <th className="p-8">רווח ריאלי</th>
+                            <th className="p-8">מס (ריאלי)</th>
+                            <th className="p-8 text-emerald-600">נטו ביד</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {simulation.schedule.filter(s => s.withdrawalGross).map((item, idx) => {
+                            // Find months since previous event or start
+                            const eventsBefore = simulation.schedule.filter((s, i) => s.withdrawalGross && i < simulation.schedule.indexOf(item));
+                            const lastEventIdx = eventsBefore.length > 0 ? simulation.schedule.indexOf(eventsBefore[eventsBefore.length-1]) : -1;
+                            const monthsInPeriod = simulation.schedule.indexOf(item) - lastEventIdx;
+
+                            return (
+                              <React.Fragment key={idx}>
+                                {/* Period Row */}
+                                <tr className="bg-slate-50/30 border-r-4 border-r-blue-400">
+                                  <td className="p-4 px-8 text-xs font-bold text-slate-500 flex items-center gap-2">
+                                    <Clock size={14} className="text-blue-400" />
+                                    תקופת חיסכון
+                                  </td>
+                                  <td className="p-4 px-8 text-xs font-bold text-slate-600">
+                                    {monthsInPeriod} חודשים
+                                  </td>
+                                  <td colSpan="4" className="p-4 px-8 text-xs font-bold text-slate-600">
+                                    הפקדה חודשית בתקופה זו: <span className="text-blue-600">{formatCurrency(item.deposit)}</span> 
+                                    <span className="mx-4">|</span>
+                                    הון צבור לפני משיכה: <span className="text-slate-900">{formatCurrency(item.preWithdrawalBalance)}</span>
+                                  </td>
+                                  <td></td>
+                                </tr>
+                                {/* Event Row */}
+                                <tr className="hover:bg-emerald-50/20 transition-colors">
+                                  <td className="p-8 font-black text-slate-900">
+                                    <div className="flex flex-col">
+                                      <span>{item.eventOccurred?.name}</span>
+                                      <span className="text-[10px] text-slate-400 font-bold mt-1">משיכה מתוכננת</span>
+                                    </div>
+                                  </td>
+                                  <td className="p-8 text-slate-500 font-bold">{item.date}</td>
+                                  <td className="p-8 text-slate-700 font-bold">{formatCurrency(item.withdrawalGross || 0)}</td>
+                                  <td className="p-8 text-slate-600 font-bold">{formatCurrency(item.nominalProfit || 0)}</td>
+                                  <td className="p-8 text-slate-600 font-bold">{formatCurrency(item.realProfit || 0)}</td>
+                                  <td className="p-8 text-rose-500 font-bold">-{formatCurrency(item.taxPaid || 0)}</td>
+                                  <td className="p-8 text-emerald-600 font-black text-2xl leading-none">{formatCurrency(item.withdrawalNet || 0)}</td>
+                                </tr>
+                              </React.Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </section>
                 </div>
               )}
-            </div>
+            </main>
+
+            <footer className="max-w-7xl mx-auto px-6 mt-16 text-center">
+              <p className="text-slate-300 text-[10px] font-black uppercase tracking-widest mb-3">Family Savings Planner © 2024</p>
+              <div className="flex justify-center gap-6 text-slate-400 text-[11px] font-medium italic">
+                <span>תכנון חכם</span> • <span>עתיד בטוח</span> • <span>משפחה מאושרת</span>
+              </div>
+            </footer>
           </div>
         );
       };
 
-      createRoot(document.getElementById('root')).render(<App />);
+      const container = document.getElementById('root');
+      if (container) {
+        const root = createRoot(container);
+        root.render(<App />);
+      }
     </script>
   </body>
 </html>
